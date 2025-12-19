@@ -1,5 +1,4 @@
 nicegui
 matplotlib
 numpy
-opencv-contrib-python
 aiofiles
