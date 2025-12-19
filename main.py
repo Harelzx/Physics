@@ -1,22 +1,8 @@
 from nicegui import ui, events
 from physics import VolleyballSimulation
-import functools
 import math
 import plotly.graph_objects as go
-import traceback
 
-def safe_handler(func):
-    """Decorator to catch and display exceptions without crashing the app"""
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            error_msg = f"Error in {func.__name__}: {e}"
-            print(f"[ERROR] {error_msg}")
-            traceback.print_exc()
-            ui.notify(error_msg, type='negative', timeout=5000)
-    return wrapper
 
 # English text constants
 ENGLISH_TEXT = {
@@ -146,7 +132,6 @@ def main():
                         delimiter = '\t' if '\t' in first_line else ','
 
                         header = [h.strip() for h in first_line.split(delimiter)]
-                        print(f"DEBUG: CSV Header detected (delimiter={'tab' if delimiter == chr(9) else 'comma'}): {header}")
 
                         has_meters = 'x_meter' in header and 'y_meter' in header
 
@@ -201,7 +186,6 @@ def main():
                         
                     except Exception as err:
                         ui.notify(f'Error: {err}', type='negative')
-                        print(f"Error loading overlay: {err}")
 
 
                 # Hidden upload for overlay
