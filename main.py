@@ -45,6 +45,7 @@ ENGLISH_TEXT = {
     'v0_label': 'Initial Speed (v0) [m/s]',
     'alpha_label': 'Serve Angle (α) [deg]',
     'c_label': 'Drag Coefficient (c) [kg/m]',
+    'm_label': 'Ball Mass (m) [kg]',
     'simulate_btn': 'Calculate Trajectory',
     'results_title': 'Results',
     'cleared_net': 'Cleared Net?',
@@ -94,35 +95,47 @@ def main():
                 with ui.row().classes('w-full gap-4 flex-wrap justify-center'):
                     # Controls Column
                     with ui.card().classes('min-w-[300px] flex-1 p-4'):
-                        ui.label(ENGLISH_TEXT['h_label'])
-                        with ui.row().classes('w-full items-center gap-2'):
+                        with ui.row().classes('w-full items-center justify-between'):
+                            ui.label(ENGLISH_TEXT['h_label']).classes('font-medium')
+                            h_number = ui.number(value=2.5, min=0, step=0.01, format='%.2f').classes('w-24').props('dense')
+                        with ui.row().classes('w-full items-center gap-2 mb-2'):
                             h_input = ui.slider(min=1, max=4, step=0.01, value=2.5).props('label-always').classes('flex-grow')
-                            h_number = ui.number(value=2.5, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
                         h_input.bind_value(h_number, 'value')
 
-                        ui.label(ENGLISH_TEXT['D_label'])
-                        with ui.row().classes('w-full items-center gap-2'):
+                        with ui.row().classes('w-full items-center justify-between'):
+                            ui.label(ENGLISH_TEXT['D_label']).classes('font-medium')
+                            D_number = ui.number(value=0, step=0.01, format='%.2f').classes('w-24').props('dense')
+                        with ui.row().classes('w-full items-center gap-2 mb-2'):
                             D_input = ui.slider(min=-2, max=4, step=0.01, value=0).props('label-always').classes('flex-grow')
-                            D_number = ui.number(value=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
                         D_input.bind_value(D_number, 'value')
 
-                        ui.label(ENGLISH_TEXT['v0_label'])
-                        with ui.row().classes('w-full items-center gap-2'):
+                        with ui.row().classes('w-full items-center justify-between'):
+                            ui.label(ENGLISH_TEXT['v0_label']).classes('font-medium')
+                            v0_number = ui.number(value=18, min=0, step=0.01, format='%.2f').classes('w-24').props('dense')
+                        with ui.row().classes('w-full items-center gap-2 mb-2'):
                             v0_input = ui.slider(min=5, max=30, step=0.01, value=18).props('label-always').classes('flex-grow')
-                            v0_number = ui.number(value=18, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
                         v0_input.bind_value(v0_number, 'value')
 
-                        ui.label(ENGLISH_TEXT['alpha_label'])
-                        with ui.row().classes('w-full items-center gap-2'):
+                        with ui.row().classes('w-full items-center justify-between'):
+                            ui.label(ENGLISH_TEXT['alpha_label']).classes('font-medium')
+                            alpha_number = ui.number(value=10, step=0.1, format='%.1f').classes('w-24').props('dense')
+                        with ui.row().classes('w-full items-center gap-2 mb-2'):
                             alpha_input = ui.slider(min=-90, max=90, step=0.1, value=10).props('label-always').classes('flex-grow')
-                            alpha_number = ui.number(value=10, step=0.0001, format='%.4f').classes('w-24').props('dense')
                         alpha_input.bind_value(alpha_number, 'value')
 
-                        ui.label(ENGLISH_TEXT['c_label'])
-                        with ui.row().classes('w-full items-center gap-2'):
-                            c_input = ui.slider(min=0.001, max=0.01, step=0.0001, value=0.005).props('label-always').classes('flex-grow')
+                        with ui.row().classes('w-full items-center justify-between'):
+                            ui.label(ENGLISH_TEXT['c_label']).classes('font-medium')
                             c_number = ui.number(value=0.005, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
+                        with ui.row().classes('w-full items-center gap-2 mb-2'):
+                            c_input = ui.slider(min=0.001, max=0.01, step=0.0001, value=0.005).props('label-always').classes('flex-grow')
                         c_input.bind_value(c_number, 'value')
+
+                        with ui.row().classes('w-full items-center justify-between'):
+                            ui.label(ENGLISH_TEXT['m_label']).classes('font-medium')
+                            m_number = ui.number(value=0.27, min=0.1, max=0.5, step=0.01, format='%.2f').classes('w-24').props('dense')
+                        with ui.row().classes('w-full items-center gap-2'):
+                            m_input = ui.slider(min=0.2, max=0.4, step=0.01, value=0.27).props('label-always').classes('flex-grow')
+                        m_input.bind_value(m_number, 'value')
                         
                         sim_btn = ui.button(ENGLISH_TEXT['simulate_btn']).classes('mt-4 w-full bg-blue-500 text-white')
                         
@@ -398,8 +411,9 @@ def main():
         v0 = v0_input.value
         alpha = alpha_input.value
         c = c_input.value
+        m = m_input.value
         
-        sim = VolleyballSimulation(h, D, v0, alpha, c)
+        sim = VolleyballSimulation(h, D, v0, alpha, c, m=m)
         res = sim.simulate()
         
         # Update Results
@@ -476,23 +490,23 @@ def main():
                     fit_labels['avg_err'].text = f"Avg Error: {avg_err:.4f} m"
 
                     # Color code based on quality
-                    if r2 >= 0.99:
+                    if r2 >= 0.98:
                         quality = "Excellent"
                         color = "text-green-600"
-                    elif r2 >= 0.95:
+                    elif r2 >= 0.90:
                         quality = "Good"
                         color = "text-blue-600"
-                    elif r2 >= 0.90:
+                    elif r2 >= 0.80:
                         quality = "Fair"
                         color = "text-yellow-600"
                     else:
                         quality = "Poor"
                         color = "text-red-600"
 
-                    fit_labels['status'].text = f"{quality} fit ({len(errors)}/{len(xm)} points matched)"
+                    fit_labels['status'].text = f"Quality: {quality} (R²: {r2:.2f}) | Points Compared: {len(errors)}/{len(xm)}"
                     fit_labels['status'].classes(color, remove='text-gray-500 text-green-600 text-blue-600 text-yellow-600 text-red-600')
                 else:
-                    fit_labels['status'].text = "No overlap between sim and measured X range"
+                    fit_labels['status'].text = "No common X-range between data and simulation"
                     fit_labels['status'].classes('text-orange-500', remove='text-gray-500 text-green-600 text-blue-600 text-yellow-600 text-red-600')
 
         else:
@@ -505,6 +519,7 @@ def main():
              fit_labels['status'].classes('text-gray-500', remove='text-green-600 text-blue-600 text-yellow-600 text-red-600 text-orange-500')
 
     sim_btn.on_click(run_simulation)
+    run_simulation() # Run initially on startup
     
     # --- VIDEO ANALYSIS LOGIC ---
     async def handle_upload(e: events.UploadEventArguments):
