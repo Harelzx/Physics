@@ -48,6 +48,6 @@ If you have tracking data (e.g., from a video analysis tool exported as CSV):
 ## Requirements
 *   Python 3.x
 *   nicegui
-*   matplotlib
+*   plotly
 *   numpy
 *   aiofiles
