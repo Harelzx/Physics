@@ -3,5 +3,6 @@ __pycache__/
 .DS_Store
 *.csv
 *.mp4
+*.png
 .vscode/
 .idea/

@@ -15,6 +15,11 @@ class VideoAnalyzer:
         self._frame_cache = {}
         self._cache_order = []
         self._cache_max_size = 30
+        self._is_calibrated = False
+
+    @property
+    def is_calibrated(self):
+        return self._is_calibrated
 
     def load_video(self, path):
         self.video_path = path
@@ -26,6 +31,7 @@ class VideoAnalyzer:
         self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self._is_calibrated = False
 
         # Clear frame cache for new video
         self._frame_cache = {}
@@ -67,6 +73,7 @@ class VideoAnalyzer:
         if dist_pixels == 0:
             raise ValueError("Calibration points cannot be the same")
         self.pixels_per_meter = dist_pixels / real_distance_m
+        self._is_calibrated = True
 
     def set_origin(self, p):
         self.origin = p

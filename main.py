@@ -8,6 +8,8 @@ import base64
 import asyncio
 import traceback
 import functools
+import math
+import plotly.graph_objects as go
 
 def safe_handler(func):
     """Decorator to catch and display exceptions without crashing the app"""
@@ -58,6 +60,9 @@ ENGLISH_TEXT = {
     'tab_sim': 'Simulation',
     'tab_video': 'Video Analysis',
     'upload_label': 'Upload Video',
+    'calib_dist_label': 'Real Distance (m)',
+    'calib_step1': 'Step 1: Set Scale',
+    'calib_step2': 'Step 2: Set Origin',
 }
 
 def main():
@@ -81,27 +86,140 @@ def main():
             # --- SIMULATION TAB ---
             with ui.tab_panel(sim_tab):
                 # Container for plot
-                plot_container = ui.column().classes('w-full mb-2')
+                plot_container = ui.plotly(go.Figure()).classes('w-full h-96')
+                
+                # Measured data state for overlay
+                measured_data = {'x': [], 'y': [], 'loaded': False}
                 
                 with ui.row().classes('w-full gap-4 flex-wrap justify-center'):
                     # Controls Column
                     with ui.card().classes('min-w-[300px] flex-1 p-4'):
                         ui.label(ENGLISH_TEXT['h_label'])
-                        h_input = ui.slider(min=1, max=4, step=0.1, value=2.5).props('label-always')
-                        
+                        with ui.row().classes('w-full items-center gap-2'):
+                            h_input = ui.slider(min=1, max=4, step=0.01, value=2.5).props('label-always').classes('flex-grow')
+                            h_number = ui.number(value=2.5, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
+                        h_input.bind_value(h_number, 'value')
+
                         ui.label(ENGLISH_TEXT['D_label'])
-                        D_input = ui.slider(min=-2, max=4, step=0.1, value=0).props('label-always')
-                        
+                        with ui.row().classes('w-full items-center gap-2'):
+                            D_input = ui.slider(min=-2, max=4, step=0.01, value=0).props('label-always').classes('flex-grow')
+                            D_number = ui.number(value=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
+                        D_input.bind_value(D_number, 'value')
+
                         ui.label(ENGLISH_TEXT['v0_label'])
-                        v0_input = ui.slider(min=5, max=30, step=0.5, value=18).props('label-always')
-                        
+                        with ui.row().classes('w-full items-center gap-2'):
+                            v0_input = ui.slider(min=5, max=30, step=0.01, value=18).props('label-always').classes('flex-grow')
+                            v0_number = ui.number(value=18, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
+                        v0_input.bind_value(v0_number, 'value')
+
                         ui.label(ENGLISH_TEXT['alpha_label'])
-                        alpha_input = ui.slider(min=-90, max=90, step=1, value=10).props('label-always')
-                        
+                        with ui.row().classes('w-full items-center gap-2'):
+                            alpha_input = ui.slider(min=-90, max=90, step=0.1, value=10).props('label-always').classes('flex-grow')
+                            alpha_number = ui.number(value=10, step=0.0001, format='%.4f').classes('w-24').props('dense')
+                        alpha_input.bind_value(alpha_number, 'value')
+
                         ui.label(ENGLISH_TEXT['c_label'])
-                        c_input = ui.slider(min=0.001, max=0.01, step=0.001, value=0.005).props('label-always')
+                        with ui.row().classes('w-full items-center gap-2'):
+                            c_input = ui.slider(min=0.001, max=0.01, step=0.0001, value=0.005).props('label-always').classes('flex-grow')
+                            c_number = ui.number(value=0.005, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
+                        c_input.bind_value(c_number, 'value')
                         
                         sim_btn = ui.button(ENGLISH_TEXT['simulate_btn']).classes('mt-4 w-full bg-blue-500 text-white')
+                        
+                        # Load Measured Data Overlay
+                        ui.label('Overlay Measured Data').classes('mt-4 font-bold')
+                        
+                        # Overlay controls
+                        with ui.expansion('Overlay Settings', icon='settings').classes('w-full'):
+                             def on_flip_x_change(_e):
+                                 # Recalculate X offset when flip changes so first point stays at x=-9
+                                 if measured_data['loaded'] and measured_data['x']:
+                                     first_x = measured_data['x'][0]
+                                     flip_x = -1 if overlay_flip_x.value else 1
+                                     overlay_off_x.value = -9.0 - (first_x * flip_x)
+                                 run_simulation()
+
+                             overlay_flip_x = ui.checkbox('Flip X', value=True, on_change=on_flip_x_change)
+                             overlay_off_x = ui.number(label='Offset X (m)', value=-9.0, step=0.01, format='%.4f', on_change=lambda e: run_simulation()).classes('w-full')
+                             overlay_off_y = ui.number(label='Offset Y (m)', value=0.0, step=0.01, format='%.4f', on_change=lambda e: run_simulation()).classes('w-full')
+                             overlay_status = ui.label('Status: No data').classes('text-xs text-gray-500 mt-1')
+                             
+                        async def handle_overlay_upload(e: events.UploadEventArguments):
+                            try:
+                                content = await e.file.read()
+                                csv_text = content.decode('utf-8')
+                                lines = csv_text.strip().split('\n')
+                                if len(lines) < 2: 
+                                    ui.notify('Empty CSV', type='warning')
+                                    return
+                                    
+                                # Robust header parsing: detect delimiter (tab or comma)
+                                first_line = lines[0].strip()
+                                delimiter = '\t' if '\t' in first_line else ','
+
+                                header = [h.strip() for h in first_line.split(delimiter)]
+                                print(f"DEBUG: CSV Header detected (delimiter={'tab' if delimiter == chr(9) else 'comma'}): {header}")
+
+                                has_meters = 'x_meter' in header and 'y_meter' in header
+
+                                xs, ys = [], []
+
+                                # Indices for columns
+                                try:
+                                    idx_x = header.index('x_meter') if has_meters else 2
+                                    idx_y = header.index('y_meter') if has_meters else 3
+                                except ValueError:
+                                     # Fallback if standard indices 2/3 fail (unlikely given length check below)
+                                     idx_x, idx_y = 0, 1
+
+                                # If fall back to pixels, check bounds
+                                if not has_meters and len(header) < 4:
+                                     idx_x, idx_y = 2, 3
+
+                                for line in lines[1:]:
+                                    parts = line.split(delimiter)
+                                    if len(parts) > max(idx_x, idx_y):
+                                        try:
+                                            xs.append(float(parts[idx_x].strip()))
+                                            ys.append(float(parts[idx_y].strip()))
+                                        except ValueError:
+                                            continue
+                                        
+                                if not xs: 
+                                    ui.notify('No valid data points found', type='warning')
+                                    return
+                                
+                                measured_data['x'] = xs
+                                measured_data['y'] = ys
+                                measured_data['loaded'] = True
+                                measured_data['is_calibrated'] = has_meters
+                                
+                                if has_meters:
+                                    # Auto-set X offset so first point is at x = -9 (serve line)
+                                    # Account for flip_x: final_x = first_x * flip_x + off_x = -9
+                                    # So: off_x = -9 - first_x * flip_x
+                                    first_x = xs[0]
+                                    flip_x = -1 if overlay_flip_x.value else 1
+                                    overlay_off_x.value = -9.0 - (first_x * flip_x)
+                                    overlay_status.text = f'Status: Calibrated Data (Meters). Loaded {len(xs)} points.'
+                                    overlay_status.classes('text-green-600', remove='text-gray-500 text-orange-500')
+                                    ui.notify(f'Calibrated data loaded. X offset auto-set to {overlay_off_x.value:.2f}m', type='positive')
+                                else:
+                                    overlay_status.text = f'Status: Raw Pixel Data. Loaded {len(xs)} points.'
+                                    overlay_status.classes('text-orange-500', remove='text-gray-500 text-green-600')
+                                    ui.notify(f'Loaded Pixel Data.', type='positive')
+
+                                run_simulation() # Refresh plot
+                                
+                            except Exception as err:
+                                ui.notify(f'Error: {err}', type='negative')
+                                print(f"Error loading overlay: {err}")
+
+
+                        # Hidden upload for overlay
+                        overlay_upload = ui.upload(on_upload=lambda e: handle_overlay_upload(e), auto_upload=True).props('accept=.csv').classes('hidden') 
+                        ui.button('Load CSV Overlay', on_click=lambda: overlay_upload.run_method('pickFiles')).classes('w-full bg-gray-600 text-white')
+
 
                     # Results Column
                     with ui.card().classes('min-w-[300px] flex-1 p-4'):
@@ -113,6 +231,17 @@ def main():
                         result_labels['time_max_height'] = ui.label(f"{ENGLISH_TEXT['time_max_height']}: -")
                         result_labels['time_return_h'] = ui.label(f"{ENGLISH_TEXT['time_return_h']}: -")
 
+                        # Fit Quality Section
+                        ui.separator().classes('my-2')
+                        ui.label("Fit Quality").classes('font-bold text-purple-600')
+                        fit_labels = {
+                            'rmse': ui.label("RMSE: -").classes('text-sm'),
+                            'r2': ui.label("R² Score: -").classes('text-sm'),
+                            'max_err': ui.label("Max Error: -").classes('text-sm'),
+                            'avg_err': ui.label("Avg Error: -").classes('text-sm'),
+                            'status': ui.label("Run simulation with CSV loaded").classes('text-xs text-gray-500'),
+                        }
+
             # --- VIDEO ANALYSIS TAB ---
             with ui.tab_panel(video_tab):
                 with ui.row().classes('w-full gap-2'):
@@ -120,8 +249,23 @@ def main():
                     with ui.column().classes('w-1/4'):
                         ui.label(ENGLISH_TEXT['upload_label']).classes('font-bold')
                         ui.upload(on_upload=lambda e: handle_upload(e), auto_upload=True).classes('w-full')
-
+                        
                         status_label = ui.label('Status: Waiting for video')
+
+                        # Calibration Controls (simplified)
+                        calib_card = ui.card().classes('w-full p-2 mt-2 hidden')
+                        with calib_card:
+                            ui.label('Calibration: Ball Diameter').classes('font-bold')
+                            ui.label('Step 1: Click opposite edges of the ball').classes('text-sm text-gray-600')
+                            
+                            real_dist_input = ui.number(value=0.21, min=0.1, step=0.01, label='Ball Diameter (m)').classes('w-full')
+                            
+                            calib_btn = ui.button('Set Scale from Clicks', on_click=lambda: set_scale()).classes('w-full mt-2')
+                            calib_btn.disable()
+                            
+                            ui.label('Step 2: Set Origin (0,0)').classes('mt-2 text-sm text-gray-600')
+                            origin_btn = ui.button('Set Origin', on_click=lambda: enable_origin_mode()).classes('w-full mt-2')
+                            origin_btn.disable()
 
                     # Right Column: Interactive Image & Plot (wider)
                     with ui.column().classes('w-3/4'):
@@ -168,37 +312,85 @@ def main():
                         video_plot = ui.card().classes('w-full mt-2 hidden')
 
     # --- SIMULATION LOGIC ---
-    def update_plot(sim_result, params):
-        with plot_container:
-            plot_container.clear()
-            with ui.pyplot(figsize=(10, 6)) as plot:
-                ax = plot.fig.gca()
-                
-                # Unpack trajectory
-                traj = sim_result['trajectory']
-                x = traj['x']
-                y = traj['y']
-                
-                # Plot trajectory
-                ax.plot(x, y, label='Ball Trajectory', color='blue')
-                
-                # Draw Court
-                ax.plot([0, 0], [0, 2.43], color='red', linewidth=3, label='Net (2.43m)')
-                ax.axvline(x=-9, color='green', linestyle='--', label='Serve Line')
-                ax.axvline(x=9, color='green', linestyle='--', label='End Line')
-                ax.axhline(y=0, color='black', linewidth=1)
-                
-                player_x = -9 - params['D']
-                ax.plot(player_x, params['h'], 'ko', label='Serve Point')
-                
-                ax.set_xlabel('Distance (m)')
-                ax.set_ylabel('Height (m)')
-                ax.set_title('Ball Trajectory')
-                ax.grid(True)
-                ax.legend(loc='upper right')
-                ax.set_xlim(min(player_x - 1, -10), 12)
-                ax.set_ylim(0, max(max(y) + 1, 4))
-                plot.fig.tight_layout()
+    def update_plot(sim_result):
+        fig = go.Figure()
+
+        # Unpack trajectory
+        traj = sim_result['trajectory']
+        x = traj['x']
+        y = traj['y']
+        
+        # 1. Plot Simulated Trajectory
+        fig.add_trace(go.Scatter(
+            x=x, y=y,
+            mode='lines',
+            name='Simulated',
+            line=dict(color='blue', width=3)
+        ))
+
+        # 2. Overlay Measured Data
+        if measured_data['loaded']:
+            off_x = overlay_off_x.value if overlay_off_x.value is not None else 0.0
+            off_y = overlay_off_y.value if overlay_off_y.value is not None else 0.0
+            flip_x = -1 if overlay_flip_x.value else 1
+
+            # Data is in meters - apply flip and offset
+            xm = [p * flip_x + off_x for p in measured_data['x']]
+            ym = [p + off_y for p in measured_data['y']]
+
+            fig.add_trace(go.Scatter(
+                x=xm, y=ym,
+                mode='markers',
+                name='Measured',
+                marker=dict(color='green', size=6)
+            ))
+
+        # 3. Court Elements
+        # Net
+        fig.add_trace(go.Scatter(
+            x=[0, 0], y=[0, 2.43],
+            mode='lines',
+            name='Net (2.43m)',
+            line=dict(color='red', width=4)
+        ))
+        
+        # Court Lines (Serve -9m, End 9m)
+        fig.add_trace(go.Scatter(
+            x=[-9, -9], y=[0, 4],
+            mode='lines',
+            name='Serve Line',
+            line=dict(color='gray', width=2, dash='dash')
+        ))
+        fig.add_trace(go.Scatter(
+            x=[9, 9], y=[0, 4],
+            mode='lines',
+            name='End Line',
+            line=dict(color='gray', width=2, dash='dash')
+        ))
+
+        # Serve Point (Start)
+        if x:
+            fig.add_trace(go.Scatter(
+                x=[x[0]], y=[y[0]],
+                mode='markers',
+                name='Serve Point',
+                marker=dict(color='black', size=8)
+            ))
+
+        # Layout Configuration
+        fig.update_layout(
+            title='Ball Trajectory (Interactive)',
+            xaxis_title='Distance (m)',
+            yaxis_title='Height (m)',
+            xaxis=dict(range=[-10, 12], zeroline=True),
+            yaxis=dict(range=[0, max(4.5, max(y) + 0.5) if y else 4.5], zeroline=True),
+            width=None, # Auto width
+            height=400,
+            margin=dict(l=40, r=40, t=40, b=40),
+            hovermode='closest'
+        )
+
+        plot_container.update_figure(fig)
 
     def run_simulation():
         h = h_input.value
@@ -223,7 +415,94 @@ def main():
         val_ret = f"{t_ret:.2f} s" if t_ret is not None else ENGLISH_TEXT['na']
         result_labels['time_return_h'].text = f"{ENGLISH_TEXT['time_return_h']}: {val_ret}"
         
-        update_plot(res, {'h': h, 'D': D})
+        update_plot(res)
+
+        # Update Fit Quality if measured data loaded
+        if measured_data['loaded']:
+            off_x = overlay_off_x.value if overlay_off_x.value is not None else 0.0
+            off_y = overlay_off_y.value if overlay_off_y.value is not None else 0.0
+            flip_x = -1 if overlay_flip_x.value else 1
+
+            # Data is in meters - apply flip and offset
+            xm = [p * flip_x + off_x for p in measured_data['x']]
+            ym = [p + off_y for p in measured_data['y']]
+            
+            if ym:
+                # Calculate Fit Quality metrics
+                # For each measured point, find the closest simulated Y at that X
+                sim_x = res['trajectory']['x']
+                sim_y = res['trajectory']['y']
+
+                errors = []
+
+                for mx, my in zip(xm, ym):
+                    # Find the simulated Y value at measured X by interpolation
+                    # Find bracketing indices in sim_x
+                    sim_y_at_mx = None
+                    for i in range(len(sim_x) - 1):
+                        if (sim_x[i] <= mx <= sim_x[i+1]) or (sim_x[i] >= mx >= sim_x[i+1]):
+                            # Linear interpolation
+                            if sim_x[i+1] != sim_x[i]:
+                                t = (mx - sim_x[i]) / (sim_x[i+1] - sim_x[i])
+                                sim_y_at_mx = sim_y[i] + t * (sim_y[i+1] - sim_y[i])
+                            else:
+                                sim_y_at_mx = sim_y[i]
+                            break
+
+                    if sim_y_at_mx is not None:
+                        err_y = my - sim_y_at_mx
+                        errors.append(err_y ** 2)
+
+                if errors:
+                    # RMSE
+                    rmse = math.sqrt(sum(errors) / len(errors))
+
+                    # R² Score (coefficient of determination)
+                    # R² = 1 - SS_res / SS_tot
+                    mean_y = sum(ym) / len(ym)
+                    ss_tot = sum((y - mean_y) ** 2 for y in ym)
+                    ss_res = sum(errors)
+                    r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+
+                    # Max and Average absolute error
+                    abs_errors = [math.sqrt(e) for e in errors]
+                    max_err = max(abs_errors)
+                    avg_err = sum(abs_errors) / len(abs_errors)
+
+                    # Update fit labels
+                    fit_labels['rmse'].text = f"RMSE: {rmse:.4f} m"
+                    fit_labels['r2'].text = f"R² Score: {r2:.4f}"
+                    fit_labels['max_err'].text = f"Max Error: {max_err:.4f} m"
+                    fit_labels['avg_err'].text = f"Avg Error: {avg_err:.4f} m"
+
+                    # Color code based on quality
+                    if r2 >= 0.99:
+                        quality = "Excellent"
+                        color = "text-green-600"
+                    elif r2 >= 0.95:
+                        quality = "Good"
+                        color = "text-blue-600"
+                    elif r2 >= 0.90:
+                        quality = "Fair"
+                        color = "text-yellow-600"
+                    else:
+                        quality = "Poor"
+                        color = "text-red-600"
+
+                    fit_labels['status'].text = f"{quality} fit ({len(errors)}/{len(xm)} points matched)"
+                    fit_labels['status'].classes(color, remove='text-gray-500 text-green-600 text-blue-600 text-yellow-600 text-red-600')
+                else:
+                    fit_labels['status'].text = "No overlap between sim and measured X range"
+                    fit_labels['status'].classes('text-orange-500', remove='text-gray-500 text-green-600 text-blue-600 text-yellow-600 text-red-600')
+
+        else:
+             # Reset fit labels
+             fit_labels['rmse'].text = "RMSE: -"
+             fit_labels['r2'].text = "R² Score: -"
+             fit_labels['max_err'].text = "Max Error: -"
+             fit_labels['avg_err'].text = "Avg Error: -"
+             fit_labels['status'].text = "Load CSV data first"
+             fit_labels['status'].classes('text-gray-500', remove='text-green-600 text-blue-600 text-yellow-600 text-red-600 text-orange-500')
 
     sim_btn.on_click(run_simulation)
     
@@ -253,17 +532,15 @@ def main():
                 interactive_image.source = f'data:image/jpeg;base64,{im_b64}'
                 interactive_image.content = ''  # Clear any previous SVG
 
-                status_label.text = f'Video Loaded ({analyzer.frame_count} frames, {analyzer.fps:.1f} fps). Click on the ball to mark each frame.'
-                frame_editor_card.classes(remove='hidden')
-                # Setup frame browser slider
-                frame_slider._props['max'] = analyzer.frame_count - 1
-                frame_slider.set_value(0)
-                frame_slider.update()
-                frame_input._props['max'] = analyzer.frame_count - 1
-                frame_input.set_value(0)
-                frame_input.update()
-                frame_label.text = f'Frame: 0 / {analyzer.frame_count}'
-                ui.notify('Click on the center of the ball. Use frame slider or type frame number.')
+                status_label.text = f'Video Loaded ({analyzer.frame_count} frames, {analyzer.fps:.1f} fps). ZOOM in and CLICK edges of the ball.'
+                calib_card.classes(remove='hidden')
+                frame_editor_card.classes(remove='hidden') # Keep controls visible for zoom/nav
+                ui.notify('Video loaded. Please zoom in and calibrate scale.')
+                
+                # Reset calibration state
+                calib_state['points'] = []
+                calib_state['active'] = True
+                
         except Exception as err:
             ui.notify(f"Error loading video: {err}", type='negative')
 
@@ -271,6 +548,9 @@ def main():
     # Frame browser state
     playing_video = {'active': False}
     current_browse_frame = {'idx': 0}
+    
+    # Calibration State
+    calib_state = {'active': False, 'points': [], 'origin_mode': False}
 
     # Zoom state for coordinate conversion
     zoom_state = {'factor': 1.0, 'offset_x': 0, 'offset_y': 0}
@@ -359,8 +639,20 @@ def main():
             cv2.drawMarker(frame_bgr, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 10, 1)
 
         # Draw instruction text
-        cv2.putText(frame_bgr, 'Click on ball to mark/correct', (10, 30),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
+        if calib_state['active']:
+             msg = 'Click point 1' if len(calib_state['points']) == 0 else 'Click point 2'
+             cv2.putText(frame_bgr, msg, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+             # Draw points so far - use small crosshairs for precision
+             for p in calib_state['points']:
+                 px, py = int(p[0]), int(p[1])
+                 # Small crosshair (3 pixels each direction) instead of filled circle
+                 cv2.drawMarker(frame_bgr, (px, py), (0, 0, 255), cv2.MARKER_CROSS, 6, 1)
+                 # Tiny dot at exact center
+                 cv2.circle(frame_bgr, (px, py), 1, (0, 255, 255), -1)
+        elif calib_state['origin_mode']:
+             cv2.putText(frame_bgr, 'Click Origin (0,0)', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        else:
+             cv2.putText(frame_bgr, 'Click on ball to mark/correct', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
 
         # Apply zoom (use center of frame if no ball position)
         zoom_factor = zoom_slider.value
@@ -524,7 +816,30 @@ def main():
         """Update the progress label with current marking count"""
         count = len(tracking_data['results'])
         progress_label.text = f'Marked: {count} frames'
+        
+    def set_scale():
+        if len(calib_state['points']) == 2:
+           try:
+               p1 = calib_state['points'][0]
+               p2 = calib_state['points'][1]
+               real_dist = real_dist_input.value
+               analyzer.set_calibration(p1, p2, real_dist)
 
+               ui.notify(f"Scale set: {analyzer.pixels_per_meter:.2f} px/m. Now click to set origin.", type='positive')
+               calib_state['points'] = []
+               calib_state['active'] = False
+               calib_btn.disable()
+               # Automatically enter origin mode
+               calib_state['origin_mode'] = True
+               show_frame(current_browse_frame['idx'])
+           except ValueError as e:
+                ui.notify(str(e), type='warning')
+
+    def enable_origin_mode():
+        calib_state['origin_mode'] = True
+        show_frame(current_browse_frame['idx'])
+        ui.notify('Click a single point to set origin')
+        
     @safe_handler
     def on_image_click(e: events.MouseEventArguments):
         frame_idx = current_browse_frame['idx']
@@ -539,6 +854,30 @@ def main():
                 h, w = frame.shape[:2]
                 click_x = click_x / zoom_state['factor'] + zoom_state['offset_x']
                 click_y = click_y / zoom_state['factor'] + zoom_state['offset_y']
+                
+        # --- CALIBRATION MODE ---
+        if calib_state['active']:
+            calib_state['points'].append((click_x, click_y))
+            if len(calib_state['points']) > 2:
+                 calib_state['points'] = calib_state['points'][-2:]
+            
+            show_frame(frame_idx) # update to draw points
+            
+            if len(calib_state['points']) == 2:
+                calib_btn.enable()
+            else:
+                calib_btn.disable()
+            return
+            
+        elif calib_state['origin_mode']:
+            analyzer.set_origin((click_x, click_y))
+            calib_state['origin_mode'] = False
+            ui.notify(f'Origin set to ({click_x:.0f}, {click_y:.0f})')
+            status_label.text = f'Scale: {analyzer.pixels_per_meter:.2f} px/m, Origin: ({click_x:.0f}, {click_y:.0f}). Ready to track.'
+            calib_card.classes(add='hidden')
+            # frame_editor_card is already visible
+            show_frame(frame_idx)
+            return
 
         # Check if we already have data for this frame
         results = tracking_data['results']
@@ -585,6 +924,8 @@ def main():
             frame_slider.set_value(new_idx)
             show_frame(new_idx)
 
+    interactive_image.on_mouse(on_image_click)
+
     @safe_handler
     def clear_all_marks():
         """Clear all marked positions"""
@@ -607,11 +948,25 @@ def main():
             # Sort by frame number to handle out-of-order marking
             results_sorted = sorted(results, key=lambda r: r['frame'])
 
-            # Create CSV content - all points are manually marked
-            csv_lines = ['frame,time_s,x_pixel,y_pixel']
+            # Create CSV content
+            # If calibrated, we can also compute real-world meters relative to origin
+            has_calib = analyzer.is_calibrated
+            header = 'frame,time_s,x_pixel,y_pixel'
+            if has_calib:
+                header += ',x_meter,y_meter'
+            
+            csv_lines = [header]
 
             for r in results_sorted:
-                csv_lines.append(f"{r['frame']},{r['time']:.4f},{r['x_pixel']:.1f},{r['y_pixel']:.1f}")
+                line = f"{r['frame']},{r['time']:.4f},{r['x_pixel']:.1f},{r['y_pixel']:.1f}"
+                if has_calib:
+                    # Transform pixel to meter
+                    # x_m = (x_pix - origin_x) / px_per_m
+                    # y_m = (origin_y - y_pix) / px_per_m  (since y pixel grows downwards, but meters grow upwards)
+                    xm = (r['x_pixel'] - analyzer.origin[0]) / analyzer.pixels_per_meter
+                    ym = (analyzer.origin[1] - r['y_pixel']) / analyzer.pixels_per_meter
+                    line += f",{xm:.4f},{ym:.4f}"
+                csv_lines.append(line)
 
             csv_content = '\n'.join(csv_lines)
 
@@ -804,25 +1159,12 @@ def main():
                     ax.legend(loc='upper right')
                     fig.tight_layout()
 
-            # Refresh frame display if video is loaded
-            if analyzer.frame_count > 0:
-                show_frame(current_browse_frame['idx'])
-
-            # Get filename for display
-            csv_name = e.file.name if hasattr(e.file, 'name') else 'CSV'
-            export_status.text = f'Loaded {len(new_results)} points from {csv_name}'
-            ui.notify(f'Loaded {len(new_results)} tracking points from CSV', type='positive')
-
         except Exception as err:
-            print(f"CSV load error: {err}")
+            ui.notify(f"Error handling CSV upload: {err}", type='negative')
+            print(f"Error handling CSV upload: {err}")
             traceback.print_exc()
-            ui.notify(f'Failed to load CSV: {err}', type='negative')
 
-    interactive_image.on_mouse(on_image_click)
-
-    # Initial Run
-    run_simulation()
+    ui.run(title=ENGLISH_TEXT['title'])
 
 if __name__ in {"__main__", "__mp_main__"}:
     main()
-    ui.run(title='Volleyball Sim', port=8080, reload=False)
