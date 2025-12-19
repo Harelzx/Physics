@@ -11,6 +11,10 @@ A Python application to simulate volleyball trajectories and compare them agains
 *   **Fit Quality**: Real-time R² and RMSE analysis to quantify how well the simulation matches reality.
 *   **Interactive GUI**: Built with NiceGUI for easy parameter adjustment and visualization.
 
+## Example Data
+
+A sample CSV file `horizontal_throw_tracking.csv` is included in the repository. You can use this file to test the "Overlay Measured Data" feature. It contains real-world tracking data of a ball thrown horizontally.
+
 ## Installation
 
 1.  Clone the repository:
