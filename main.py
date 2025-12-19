@@ -103,6 +103,17 @@ def main():
                 
                 sim_btn = ui.button(ENGLISH_TEXT['simulate_btn']).classes('mt-4 w-full bg-blue-500 text-white')
                 
+
+            # Results Column
+            with ui.card().classes('min-w-[300px] flex-1 p-4'):
+                ui.label(ENGLISH_TEXT['results_title']).classes('text-xl font-bold mb-2')
+                result_labels['cleared_net'] = ui.label(f"{ENGLISH_TEXT['cleared_net']}: -")
+                result_labels['in_bounds'] = ui.label(f"{ENGLISH_TEXT['in_bounds']}: -")
+                result_labels['time_impact'] = ui.label(f"{ENGLISH_TEXT['time_impact']}: -")
+                result_labels['max_height'] = ui.label(f"{ENGLISH_TEXT['max_height']}: -")
+                result_labels['time_max_height'] = ui.label(f"{ENGLISH_TEXT['time_max_height']}: -")
+                result_labels['time_return_h'] = ui.label(f"{ENGLISH_TEXT['time_return_h']}: -")
+
                 # Load Measured Data Overlay
                 ui.label('Overlay Measured Data').classes('mt-4 font-bold')
                 
@@ -196,17 +207,6 @@ def main():
                 # Hidden upload for overlay
                 overlay_upload = ui.upload(on_upload=lambda e: handle_overlay_upload(e), auto_upload=True).props('accept=.csv').classes('hidden') 
                 ui.button('Load CSV Overlay', on_click=lambda: overlay_upload.run_method('pickFiles')).classes('w-full bg-gray-600 text-white')
-
-
-            # Results Column
-            with ui.card().classes('min-w-[300px] flex-1 p-4'):
-                ui.label(ENGLISH_TEXT['results_title']).classes('text-xl font-bold mb-2')
-                result_labels['cleared_net'] = ui.label(f"{ENGLISH_TEXT['cleared_net']}: -")
-                result_labels['in_bounds'] = ui.label(f"{ENGLISH_TEXT['in_bounds']}: -")
-                result_labels['time_impact'] = ui.label(f"{ENGLISH_TEXT['time_impact']}: -")
-                result_labels['max_height'] = ui.label(f"{ENGLISH_TEXT['max_height']}: -")
-                result_labels['time_max_height'] = ui.label(f"{ENGLISH_TEXT['time_max_height']}: -")
-                result_labels['time_return_h'] = ui.label(f"{ENGLISH_TEXT['time_return_h']}: -")
 
                 # Fit Quality Section
                 ui.separator().classes('my-2')
