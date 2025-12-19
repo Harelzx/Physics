@@ -1,11 +1,14 @@
 # Volleyball Trajectory Simulator
 
-A Python application to simulate and analyze volleyball trajectories using physics and video analysis.
+A Python application to simulate volleyball trajectories and compare them against real-world data.
+
+![Volleyball Simulator UI](screenshots/v1_preview.png)
 
 ## Features
 
 *   **Physics Simulation**: Calculates ball trajectory using Euler's method, considering gravity and drag.
-*   **Video Analysis**: Analyze slow-motion videos to track ball movement and extract real-world coordinates.
+*   **Data Overlay**: Load existing CSV files (`x_meter`, `y_meter`) to overlay measured data on the simulation.
+*   **Fit Quality**: Real-time R² and RMSE analysis to quantify how well the simulation matches reality.
 *   **Interactive GUI**: Built with NiceGUI for easy parameter adjustment and visualization.
 
 ## Installation
@@ -28,19 +31,23 @@ Run the main application:
 python3 main.py
 ```
 
-### Simulation
-Adjust sliders for Serve Height, Distance, Speed, Angle, and Drag Coefficient to see the predicted trajectory.
+### 1. Set Simulation Parameters
+Adjust the sliders to set the physical conditions:
+*   **Serve Height (h)**: Height where the ball is hit.
+*   **Initial Speed (v0)**: Speed of the ball in m/s.
+*   **Serve Angle (α)**: Angle of the serve in degrees.
+*   **Ball Mass (m)**: Standard volleyball mass (default 0.27 kg).
 
-### Video Analysis
-1.  Go to the "Video Analysis" tab.
-2.  Upload your video.
-3.  Calibrate the scale by clicking two points and entering the real-world distance.
-4.  Set the origin (0,0).
-5.  Select the ball to start auto-tracking.
+### 2. Compare with Real Data
+If you have tracking data (e.g., from a video analysis tool exported as CSV):
+1.  Locate the **"Overlay Measured Data"** section in the right column.
+2.  Click **"Load CSV Overlay"**.
+3.  Select your CSV file.
+4.  The app will overlay your data (green dots) and calculate the **Refit Quality** (R² score).
 
 ## Requirements
 *   Python 3.x
 *   nicegui
 *   matplotlib
 *   numpy
-*   opencv-python
+*   aiofiles
