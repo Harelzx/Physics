@@ -2,7 +2,7 @@ import math
 import numpy as np
 
 class VolleyballSimulation:
-    def __init__(self, h, D, v0, alpha_deg, c, m=0.27, dt=0.005):
+    def __init__(self, h, D, v0, alpha_deg, c, m=0.27, g=9.81, dt=0.005):
         """
         Initialize simulation parameters.
         h: Height of serve (m)
@@ -11,6 +11,7 @@ class VolleyballSimulation:
         alpha_deg: Angle (degrees)
         c: Drag coefficient factor (kg/m) -> F_drag = c * v^2
         m: Mass of ball (kg), default 0.27 kg
+        g: Gravity constant (m/s^2), default 9.81
         dt: Time step (s)
         """
         self.h = h
@@ -20,7 +21,7 @@ class VolleyballSimulation:
         self.c = c
         self.m = m
         self.dt = dt
-        self.g = 9.81
+        self.g = g
         
         # Court dimensions
         self.net_x = 0
@@ -58,7 +59,7 @@ class VolleyballSimulation:
         trajectory['y'].append(y)
         trajectory['t'].append(t)
         
-        while y >= 0:
+        while y >= 0 and t < 20: # Safety limit: 20s
             # Calculate forces
             v = math.sqrt(vx**2 + vy**2)
             

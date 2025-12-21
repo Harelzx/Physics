@@ -19,8 +19,9 @@ ENGLISH_TEXT = {
     'in_bounds': 'Landed In Bounds?',
     'time_impact': 'Time to Impact',
     'max_height': 'Max Height',
-    'time_max_height': 'Time to Max Height',
-    'time_return_h': 'Time from Peak to Initial Height',
+    'time_max_height': 'Time to Max Height [t]',
+    'time_return_h': 'Time to Return to Initial Height [t]',
+    'g_label': 'Gravity (g) [m/s²]',
     'yes': 'Yes',
     'no': 'No',
     'na': 'N/A',
@@ -73,19 +74,19 @@ def main():
                     alpha_input = ui.slider(min=-90, max=90, step=0.1, value=10).props('label-always').classes('flex-grow')
                 alpha_input.bind_value(alpha_number, 'value')
 
-                with ui.row().classes('w-full items-center justify-between'):
-                    ui.label(ENGLISH_TEXT['c_label']).classes('font-medium')
-                    c_number = ui.number(value=0.005, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
-                with ui.row().classes('w-full items-center gap-2 mb-2'):
-                    c_input = ui.slider(min=0.001, max=0.01, step=0.0001, value=0.005).props('label-always').classes('flex-grow')
-                c_input.bind_value(c_number, 'value')
+                alpha_input.bind_value(alpha_number, 'value')
 
                 with ui.row().classes('w-full items-center justify-between'):
-                    ui.label(ENGLISH_TEXT['m_label']).classes('font-medium')
-                    m_number = ui.number(value=0.27, min=0.1, max=0.5, step=0.01, format='%.2f').classes('w-24').props('dense')
-                with ui.row().classes('w-full items-center gap-2'):
-                    m_input = ui.slider(min=0.2, max=0.4, step=0.01, value=0.27).props('label-always').classes('flex-grow')
-                m_input.bind_value(m_number, 'value')
+                    ui.label(ENGLISH_TEXT['c_label']).classes('font-medium text-sm')
+                    c_input = ui.number(value=0.005, min=0, step=0.0001, format='%.4f').classes('w-24').props('dense')
+
+                with ui.row().classes('w-full items-center justify-between'):
+                    ui.label(ENGLISH_TEXT['m_label']).classes('font-medium text-sm')
+                    m_input = ui.number(value=0.27, min=0.1, max=0.5, step=0.01, format='%.2f').classes('w-24').props('dense')
+
+                with ui.row().classes('w-full items-center justify-between'):
+                    ui.label(ENGLISH_TEXT['g_label']).classes('font-medium text-sm')
+                    g_input = ui.number(value=9.81, min=0, step=0.01, format='%.2f').classes('w-24').props('dense')
                 
                 sim_btn = ui.button(ENGLISH_TEXT['simulate_btn']).classes('mt-4 w-full bg-blue-500 text-white')
                 
@@ -292,8 +293,11 @@ def main():
         alpha = alpha_input.value
         c = c_input.value
         m = m_input.value
+        g = max(0.01, g_input.value) 
+        if g_input.value < 0:
+            ui.notify("Gravity must be positive. Using 0.01 as fallback.", type='warning')
         
-        sim = VolleyballSimulation(h, D, v0, alpha, c, m=m)
+        sim = VolleyballSimulation(h, D, v0, alpha, c, m=m, g=g)
         res = sim.simulate()
         
         # Update Results
