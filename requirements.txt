@@ -1,3 +1,4 @@
 nicegui
 numpy
 aiofiles
+plotly==6.5.1
